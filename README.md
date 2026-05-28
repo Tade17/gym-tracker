@@ -26,7 +26,7 @@ PWA offline-first para registrar entrenamientos, nutrición y progreso corporal.
 - Barra visual de macros con objetivos configurables
 - Base de datos de alimentos (CRUD, macros por 100 g, ~40 alimentos base)
 - Recetario guardado: crea recetas con ingredientes y úsalas por porción (50 % / 75 % / 100 %…)
-- Prompt de tipo de día (Entreno 💪 / Descanso 😴) para ajustar objetivos calóricos
+- Prompt de tipo de día (Entreno/ Descanso) para ajustar objetivos calóricos
 
 ### Cuerpo
 - Registro de peso corporal con gráfico SVG de evolución
