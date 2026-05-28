@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #0f172a;
+  --color-bg-soft: #1e293b;
+  --color-bg-card: #334155;
+  --color-border: #475569;
+  --color-text: #f1f5f9;
+  --color-text-muted: #94a3b8;
+  --color-accent: #22d3ee;
+  --color-accent-strong: #06b6d4;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  /* iOS safe areas para el bottom nav */
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Clase utilitaria para inputs de formulario — evita repetir las mismas
+   5 clases de Tailwind en cada campo. @layer components le dice a Tailwind
+   que trate esto como una utilidad purgable, no CSS global. */
+@layer components {
+  .field-input {
+    @apply w-full bg-slate-900 border border-slate-700/60 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-500 transition-colors;
+  }
+}
+
+/* Inputs numéricos sin spinners molestos en móvil */
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] { -moz-appearance: textfield; }
