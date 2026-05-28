@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Plus, ClipboardList, Timer, ChevronLeft, ChevronRight, FileText, Check, Copy } from 'lucide-react';
+import { Plus, ClipboardList, Timer, ChevronLeft, ChevronRight, FileText, Check, Copy, Share2, CheckCheck } from 'lucide-react';
 import type { Session, ExerciseEntry, Template, CardioEntry, MuscleGroup } from '../../../types';
 import { useTrainingData } from '../TrainingDataContext';
-import { formatShortDate, toISODate, addDays } from '../../../lib/date';
+import { formatShortDate, toISODate, addDays, startOfWeek } from '../../../lib/date';
+import { formatSessionsText } from '../utils/shareText';
 import { uid } from '../../../lib/id';
 import ExerciseBlock from '../components/ExerciseBlock';
 import RestTimer from '../components/RestTimer';
@@ -22,6 +23,7 @@ export default function SessionEditor() {
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [timerSeconds,       setTimerSeconds]       = useState<number | null>(null);
   const [showPastPicker,     setShowPastPicker]     = useState(false);
+  const [showShareModal,     setShowShareModal]     = useState(false);
 
   function updateSession(updater: (current: Session) => Session) {
     setSessions(prev => {
@@ -64,6 +66,15 @@ export default function SessionEditor() {
 
   function removeEntry(entryId: string) {
     updateSession(s => ({ ...s, exercises: s.exercises.filter(e => e.id !== entryId) }));
+  }
+
+  function moveEntry(idx: number, dir: -1 | 1) {
+    updateSession(s => {
+      const arr = [...s.exercises];
+      const [item] = arr.splice(idx, 1);
+      arr.splice(idx + dir, 0, item);
+      return { ...s, exercises: arr };
+    });
   }
 
   // Copia una sesión pasada AL día actual (todos los sets se marcan como pendientes).
@@ -130,7 +141,7 @@ export default function SessionEditor() {
         />
       ) : (
         <div className="space-y-3">
-          {session.exercises.map(entry => (
+          {session.exercises.map((entry, idx) => (
             <ExerciseBlock
               key={entry.id}
               entry={entry}
@@ -140,6 +151,8 @@ export default function SessionEditor() {
               onUpdate={next => updateEntry(entry.id, next)}
               onRemove={() => removeEntry(entry.id)}
               onStartRest={secs => setTimerSeconds(secs)}
+              onMoveUp={idx > 0 ? () => moveEntry(idx, -1) : undefined}
+              onMoveDown={idx < session.exercises.length - 1 ? () => moveEntry(idx, 1) : undefined}
             />
           ))}
 
@@ -177,6 +190,13 @@ export default function SessionEditor() {
               className="w-full bg-slate-800 border border-slate-700/60 rounded-xl px-3 py-2 text-sm placeholder:text-slate-600 resize-none outline-none focus:border-slate-500"
             />
           </label>
+
+          <button
+            onClick={() => setShowShareModal(true)}
+            className="w-full flex items-center justify-center gap-2 border border-dashed border-slate-600 hover:border-slate-400 text-slate-500 hover:text-slate-300 py-2 rounded-xl text-sm transition-colors"
+          >
+            <Share2 size={14} /> Compartir sesión
+          </button>
         </div>
       )}
 
@@ -207,6 +227,15 @@ export default function SessionEditor() {
           exMap={exMap}
           onPick={copySessionFrom}
           onClose={() => setShowPastPicker(false)}
+        />
+      )}
+
+      {showShareModal && (
+        <ShareModal
+          currentDate={date}
+          sessions={sessions}
+          exMap={exMap}
+          onClose={() => setShowShareModal(false)}
         />
       )}
 
@@ -542,6 +571,179 @@ function PastSessionPicker({ sessions, exMap, onPick, onClose }: {
         <button onClick={onClose} className="w-full bg-slate-700 py-2.5 rounded-xl text-sm">
           Cancelar
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── ShareModal ────────────────────────────────────────────────────────────────
+
+type ShareMode = 'day' | 'week' | 'pick';
+
+function ShareModal({ currentDate, sessions, exMap, onClose }: {
+  currentDate: string;
+  sessions: Session[];
+  exMap: Map<string, { id: string; name: string }>;
+  onClose: () => void;
+}) {
+  const [mode, setMode]         = useState<ShareMode>('day');
+  const [picked, setPicked]     = useState<Set<string>>(new Set());
+  const [copied, setCopied]     = useState(false);
+
+  // Todas las sesiones con ejercicios, ordenadas desc
+  const allWithEx = useMemo(
+    () => sessions.filter(s => s.exercises.length > 0).sort((a, b) => b.date.localeCompare(a.date)),
+    [sessions],
+  );
+
+  // Sesiones de la semana actual (lun→dom) con ejercicios
+  const weekSessions = useMemo(() => {
+    const mon = startOfWeek(currentDate);
+    const sun = addDays(mon, 6);
+    return allWithEx.filter(s => s.date >= mon && s.date <= sun).sort((a, b) => a.date.localeCompare(b.date));
+  }, [allWithEx, currentDate]);
+
+  // Sesión del día actual
+  const daySession = useMemo(
+    () => sessions.find(s => s.date === currentDate && s.exercises.length > 0),
+    [sessions, currentDate],
+  );
+
+  // Texto a compartir según modo
+  const text = useMemo(() => {
+    // exMap real para el formateador
+    const fullMap = exMap as Map<string, { id: string; name: string }>;
+    let selected: Session[] = [];
+    if (mode === 'day')  selected = daySession ? [daySession] : [];
+    if (mode === 'week') selected = weekSessions;
+    if (mode === 'pick') selected = allWithEx.filter(s => picked.has(s.id)).sort((a, b) => a.date.localeCompare(b.date));
+    return formatSessionsText(selected, fullMap as never);
+  }, [mode, daySession, weekSessions, allWithEx, picked, exMap]);
+
+  function togglePick(id: string) {
+    setPicked(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  async function handleShare() {
+    if (!text) return;
+    if (navigator.share) {
+      try { await navigator.share({ text }); } catch { /* cancelado */ }
+    } else {
+      handleCopy();
+    }
+  }
+
+  async function handleCopy() {
+    if (!text) return;
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const tabs: { id: ShareMode; label: string }[] = [
+    { id: 'day',  label: 'Este día'     },
+    { id: 'week', label: 'Esta semana'  },
+    { id: 'pick', label: 'Elegir días'  },
+  ];
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/60 z-40 flex items-end sm:items-center justify-center px-4 pb-20"
+      onClick={onClose}
+    >
+      <div
+        className="bg-slate-800 rounded-2xl p-4 w-full max-w-md space-y-3"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold flex items-center gap-2">
+            <Share2 size={16} className="text-cyan-400" /> Compartir sesión
+          </h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 p-1">✕</button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex bg-slate-900 rounded-xl p-1 gap-1">
+          {tabs.map(t => (
+            <button
+              key={t.id}
+              onClick={() => setMode(t.id)}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                mode === t.id
+                  ? 'bg-cyan-500 text-slate-900'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Selector de días (modo pick) */}
+        {mode === 'pick' && (
+          <ul className="overflow-y-auto max-h-36 space-y-1">
+            {allWithEx.map(s => (
+              <li key={s.id}>
+                <button
+                  onClick={() => togglePick(s.id)}
+                  className={`w-full text-left px-3 py-2 rounded-xl flex items-center gap-3 transition-colors ${
+                    picked.has(s.id) ? 'bg-cyan-500/20 border border-cyan-500/40' : 'bg-slate-900 hover:bg-slate-700'
+                  }`}
+                >
+                  <span className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
+                    picked.has(s.id) ? 'bg-cyan-500 border-cyan-500' : 'border-slate-600'
+                  }`}>
+                    {picked.has(s.id) && <Check size={10} className="text-slate-900" strokeWidth={3} />}
+                  </span>
+                  <span className="text-xs text-cyan-400 font-medium">{formatShortDate(s.date)}</span>
+                  {s.name && <span className="text-xs text-slate-400 truncate">{s.name}</span>}
+                </button>
+              </li>
+            ))}
+            {allWithEx.length === 0 && (
+              <li className="text-center text-slate-500 text-xs py-4">Sin sesiones registradas</li>
+            )}
+          </ul>
+        )}
+
+        {/* Vista previa del texto */}
+        {text ? (
+          <pre className="bg-slate-900 rounded-xl px-3 py-2.5 text-xs text-slate-300 font-mono whitespace-pre-wrap overflow-y-auto max-h-48 leading-relaxed">
+            {text}
+          </pre>
+        ) : (
+          <div className="bg-slate-900 rounded-xl px-3 py-6 text-center text-slate-500 text-xs">
+            {mode === 'day'  && 'No hay ejercicios registrados hoy'}
+            {mode === 'week' && 'No hay sesiones esta semana'}
+            {mode === 'pick' && 'Selecciona al menos un día'}
+          </div>
+        )}
+
+        {/* Botones */}
+        <div className="flex gap-2">
+          <button
+            disabled={!text}
+            onClick={handleCopy}
+            className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-40 py-2.5 rounded-xl text-sm transition-colors"
+          >
+            {copied
+              ? <><CheckCheck size={15} className="text-green-400" /> ¡Copiado!</>
+              : <><Copy size={15} /> Copiar</>
+            }
+          </button>
+          <button
+            disabled={!text}
+            onClick={handleShare}
+            className="flex-1 flex items-center justify-center gap-2 bg-cyan-500 text-slate-900 font-semibold disabled:opacity-40 py-2.5 rounded-xl text-sm transition-colors"
+          >
+            <Share2 size={15} /> Compartir
+          </button>
+        </div>
       </div>
     </div>
   );

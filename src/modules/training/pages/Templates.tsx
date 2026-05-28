@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ArrowUp, ArrowDown } from 'lucide-react';
 import type { Template, TemplateExercise, SetType } from '../../../types';
 import { useTrainingData } from '../TrainingDataContext';
 import { MUSCLE_LABEL, SET_TYPES_ORDERED, SET_TYPE_META } from '../constants';
@@ -101,6 +102,15 @@ function TemplateEditor({ initial, exercises, onSave, onCancel }: EditorProps) {
     setList(l => l.filter((_, i) => i !== idx));
   }
 
+  function moveExerciseAt(idx: number, dir: -1 | 1) {
+    setList(l => {
+      const arr = [...l];
+      const [item] = arr.splice(idx, 1);
+      arr.splice(idx + dir, 0, item);
+      return arr;
+    });
+  }
+
   function addSet(idx: number, type: SetType) {
     setList(l => l.map((te, i) =>
       i === idx ? { ...te, plannedSets: [...te.plannedSets, { type }] } : te
@@ -149,9 +159,27 @@ function TemplateEditor({ initial, exercises, onSave, onCancel }: EditorProps) {
           const ex = exMap.get(te.exerciseId);
           return (
             <li key={exIdx} className="bg-slate-800 rounded-lg p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="font-medium">{ex?.name ?? '(eliminado)'}</div>
-                <button onClick={() => removeExerciseAt(exIdx)} className="text-red-400 text-sm px-2">✕</button>
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-medium flex-1 min-w-0 truncate">{ex?.name ?? '(eliminado)'}</div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() => moveExerciseAt(exIdx, -1)}
+                    disabled={exIdx === 0}
+                    className="text-slate-500 hover:text-cyan-400 disabled:opacity-20 disabled:cursor-default transition-colors p-1"
+                    aria-label="Mover arriba"
+                  >
+                    <ArrowUp size={13} />
+                  </button>
+                  <button
+                    onClick={() => moveExerciseAt(exIdx, 1)}
+                    disabled={exIdx === list.length - 1}
+                    className="text-slate-500 hover:text-cyan-400 disabled:opacity-20 disabled:cursor-default transition-colors p-1"
+                    aria-label="Mover abajo"
+                  >
+                    <ArrowDown size={13} />
+                  </button>
+                  <button onClick={() => removeExerciseAt(exIdx)} className="text-red-400 hover:text-red-300 transition-colors p-1">✕</button>
+                </div>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {te.plannedSets.map((ps, setIdx) => (
@@ -208,28 +236,68 @@ function TemplateEditor({ initial, exercises, onSave, onCancel }: EditorProps) {
       >Guardar plantilla</button>
 
       {showPicker && (
-        <div
-          className="fixed inset-0 bg-slate-900/80 z-20 flex items-end sm:items-center justify-center px-4 pb-20"
-          onClick={() => setShowPicker(false)}
-        >
-          <div className="bg-slate-800 rounded-2xl p-4 w-full max-w-md max-h-[70vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <h2 className="text-lg font-semibold mb-2">Elegir ejercicio</h2>
-            <ul className="space-y-1">
-              {[...exercises].sort((a, b) => a.name.localeCompare(b.name)).map(ex => (
-                <li key={ex.id}>
-                  <button
-                    onClick={() => addExercise(ex.id)}
-                    className="w-full text-left bg-slate-900 hover:bg-slate-700 rounded px-3 py-2"
-                  >
-                    <div className="font-medium">{ex.name}</div>
-                    <div className="text-xs text-slate-400">{MUSCLE_LABEL[ex.muscleGroup]}</div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+        <ExercisePickerModal
+          exercises={exercises}
+          onPick={addExercise}
+          onClose={() => setShowPicker(false)}
+        />
       )}
+    </div>
+  );
+}
+
+// ─── Exercise picker con buscador ─────────────────────────────────────────────
+
+function ExercisePickerModal({ exercises, onPick, onClose }: {
+  exercises: { id: string; name: string; muscleGroup: keyof typeof MUSCLE_LABEL }[];
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState('');
+
+  const filtered = [...exercises]
+    .filter(e => e.name.toLowerCase().includes(query.toLowerCase()))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/60 z-40 flex items-end sm:items-center justify-center px-4 pb-20"
+      onClick={onClose}
+    >
+      <div
+        className="bg-slate-800 rounded-2xl p-4 w-full max-w-md space-y-3"
+        onClick={e => e.stopPropagation()}
+      >
+        <h2 className="text-base font-semibold">Elegir ejercicio</h2>
+        <input
+          autoFocus
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Buscar ejercicio..."
+          className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-3 py-2 text-sm outline-none"
+        />
+        <ul className="overflow-y-auto max-h-60 space-y-1">
+          {filtered.map(ex => (
+            <li key={ex.id}>
+              <button
+                onClick={() => onPick(ex.id)}
+                className="w-full text-left bg-slate-900 hover:bg-slate-700 rounded-xl px-3 py-2.5 transition-colors"
+              >
+                <div className="font-medium text-sm">{ex.name}</div>
+                <div className="text-xs text-slate-400">{MUSCLE_LABEL[ex.muscleGroup]}</div>
+              </button>
+            </li>
+          ))}
+          {filtered.length === 0 && (
+            <li className="text-center text-slate-500 text-sm py-6">
+              Sin resultados para "{query}"
+            </li>
+          )}
+        </ul>
+        <button onClick={onClose} className="w-full bg-slate-700 py-2.5 rounded-xl text-sm">
+          Cancelar
+        </button>
+      </div>
     </div>
   );
 }

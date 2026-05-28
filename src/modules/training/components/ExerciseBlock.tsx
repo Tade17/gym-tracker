@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, X, Check, Plus, Info, TrendingUp, BarChart2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, X, Check, Plus, Info, TrendingUp, BarChart2, ArrowUp, ArrowDown } from 'lucide-react';
 import type { ExerciseEntry, SetEntry, SetType, Exercise, Session } from '../../../types';
 import { SET_TYPE_META, SET_TYPES_ORDERED, roundTo2_5 } from '../constants';
 import SetTypeBadge from './SetTypeBadge';
@@ -14,10 +14,12 @@ interface Props {
   onUpdate: (next: ExerciseEntry) => void;
   onRemove: () => void;
   onStartRest: (seconds: number) => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }
 
 export default function ExerciseBlock({
-  entry, exercise, sessions, currentDate, onUpdate, onRemove, onStartRest,
+  entry, exercise, sessions, currentDate, onUpdate, onRemove, onStartRest, onMoveUp, onMoveDown,
 }: Props) {
   const [expanded, setExpanded] = useState(true);
   const [tooltip, setTooltip] = useState<SetType | null>(null);
@@ -129,6 +131,27 @@ export default function ExerciseBlock({
             </div>
           </div>
         </button>
+        {/* Botones reordenar */}
+        {(onMoveUp || onMoveDown) && (
+          <div className="flex flex-col gap-0.5">
+            <button
+              onClick={onMoveUp}
+              disabled={!onMoveUp}
+              className="text-slate-500 hover:text-cyan-400 disabled:opacity-20 disabled:cursor-default transition-colors p-0.5"
+              aria-label="Mover arriba"
+            >
+              <ArrowUp size={13} />
+            </button>
+            <button
+              onClick={onMoveDown}
+              disabled={!onMoveDown}
+              className="text-slate-500 hover:text-cyan-400 disabled:opacity-20 disabled:cursor-default transition-colors p-0.5"
+              aria-label="Mover abajo"
+            >
+              <ArrowDown size={13} />
+            </button>
+          </div>
+        )}
         <button
           onClick={handleRemove}
           className="text-slate-500 hover:text-red-400 transition-colors p-1 rounded"
